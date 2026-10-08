@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model categoria {
+  id        Int         @id @default(autoincrement())
+  nombre    String
+  color_ui  String?
+  productos producto[]
+}
+
+model usuario {
+  id          Int           @id @default(autoincrement())
+  nombre      String
+  email       String        @unique
+  password    String
+  rol         String
+  activo      Boolean       @default(true)
+  movimientos movimiento[]
+}
+
+model producto {
+  id                       Int                 @id @default(autoincrement())
+  nombre_producto          String
+  imagen_url               String?
+  cantidad_en_existencia   Int
+  stock_minimo             Int
+  sku                      String?
+  codigo_barras            String?
+  precio_venta             Decimal             @db.Decimal(10, 2)
+  costo_compra             Decimal             @db.Decimal(10, 2)
+  es_servicio              Boolean
+  activo                   Boolean             @default(true)
+  id_categoria             Int
+  categoria                categoria           @relation(fields: [id_categoria], references: [id])
+  clave_producto_servicio  String?
+  clave_prod_serv          clave_prod_serv?    @relation(fields: [clave_producto_servicio], references: [clave])
+  clave_unidad_medida      String?
+  clave_unidad             clave_unidad?       @relation(fields: [clave_unidad_medida], references: [clave])
+  objeto_impuesto          String?
+  objeto_imp               objeto_imp?         @relation(fields: [objeto_impuesto], references: [clave])
+  created_at               DateTime            @default(now())
+  updated_at               DateTime            @updatedAt
+  movimientos              movimiento[]
+  impuestos                producto_impuesto[]
+
+  @@index([id_categoria])
+}
+
+/// Entrada, Salida o Ajuste de inventario.
+model movimiento {
+  id              Int      @id @default(autoincrement())
+  producto_id     Int
+  producto        producto @relation(fields: [producto_id], references: [id])
+  tipo_movimiento String
+  cantidad        Int
+  stock_previo    Int
+  stock_nuevo     Int
+  motivo          String?
+  usuario_id      Int
+  usuario         usuario  @relation(fields: [usuario_id], references: [id])
+  created_at      DateTime @default(now())
+
+  @@index([producto_id])
+  @@index([usuario_id])
+}
+
+model producto_impuesto {
+  id                  Int             @id @default(autoincrement())
+  producto_id         Int
+  producto            producto        @relation(fields: [producto_id], references: [id])
+  impuesto_preset_id  Int
+  impuesto_preset     impuesto_preset @relation(fields: [impuesto_preset_id], references: [id])
+
+  @@index([producto_id])
+  @@index([impuesto_preset_id])
+}
+
+/// c_ClaveProdServ de catCFDI 4.0 (archivo 2026-10-01). La clave oficial tiene 8 dígitos.
+model clave_prod_serv {
+  clave                   String     @id
+  descripcion             String
+  incluir_iva_trasladado  String
+  incluir_ieps_trasladado String
+  fecha_inicio_vigencia   DateTime   @db.Date
+  fecha_fin_vigencia      DateTime?  @db.Date
+  productos               producto[]
+}
+
+/// c_ClaveUnidad de catCFDI 4.0 (archivo 2026-10-01).
+model clave_unidad {
+  clave                 String     @id
+  nombre                String
+  descripcion           String?
+  simbolo               String?
+  fecha_inicio_vigencia DateTime   @db.Date
+  fecha_fin_vigencia    DateTime?  @db.Date
+  productos             producto[]
+}
+
+/// c_ObjetoImp de catCFDI 4.0 (archivo 2026-10-01).
+model objeto_imp {
+  clave                 String     @id
+  descripcion           String
+  fecha_inicio_vigencia DateTime   @db.Date
+  fecha_fin_vigencia    DateTime?  @db.Date
+  productos             producto[]
+}
+
+/// Tasas y cuotas vigentes de c_TasaOCuota (catCFDI 4.0, archivo 2026-10-01).
+/// clave_impuesto sale de c_Impuesto: 001 ISR, 002 IVA, 003 IEPS.
+model impuesto_preset {
+  id                     Int                 @id @default(autoincrement())
+  clave_impuesto         String
+  impuesto               String
+  factor                 String
+  rango_o_fijo           String
+  valor_minimo           Decimal?            @db.Decimal(12, 6)
+  valor_maximo           Decimal             @db.Decimal(12, 6)
+  traslado               Boolean
+  retencion              Boolean
+  fecha_inicio_vigencia  DateTime            @db.Date
+  fecha_fin_vigencia     DateTime?           @db.Date
+  producto_impuestos     producto_impuesto[]
+}

@@ -1,0 +1,566 @@
+{
+  "info": {
+    "name": "Boxes",
+    "description": "API local en http://localhost:3000. Empieza por Auth: el login guarda token y el resto de la colección lo envía como Bearer. Luego Categorías: Crear categoría guarda el id en id_categoria. Productos usa esa variable. El DELETE de producto deja activo en false. El DELETE de categoría borra la fila y responde 409 si todavía tiene productos. Crear movimiento ya no envía usuario_id: el autor sale del token.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "id_categoria",
+      "value": "1"
+    },
+    {
+      "key": "productoId",
+      "value": "1"
+    },
+    {
+      "key": "impuestoId",
+      "value": "1"
+    },
+    {
+      "key": "usuarioId",
+      "value": "1"
+    },
+    {
+      "key": "movimientoId",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Login público. Guarda access_token en la variable token. La colección envía Authorization Bearer {{token}}.",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.access_token) pm.collectionVariables.set('token', body.access_token);",
+                  "if (body.usuario && body.usuario.id) pm.collectionVariables.set('usuarioId', String(body.usuario.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Email y contraseña del admin de desarrollo (SEED_ADMIN_EMAIL y SEED_ADMIN_PASSWORD). Guarda token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@boxes.local\",\n  \"password\": \"4dm1n1str4t0r\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categorías",
+      "description": "CRUD de categorias. Crear categoría actualiza la variable id_categoria.",
+      "item": [
+        {
+          "name": "Crear categoría",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('id_categoria', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/categorias",
+            "description": "Crea una categoría. nombre es obligatorio. color_ui es opcional. Guarda el id en id_categoria.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Empaques\",\n  \"color_ui\": \"#336699\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": 1,\n  \"nombre\": \"Empaques\",\n  \"color_ui\": \"#336699\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Listar categorías",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/categorias?pagina=1&limite=20",
+            "description": "Lista paginada. pagina empieza en 1. limite es opcional y como máximo 100. Si se omiten, usa pagina 1 y limite 20."
+          }
+        },
+        {
+          "name": "Obtener categoría",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/categorias/{{id_categoria}}",
+            "description": "Devuelve una categoría. 404 si el id no existe."
+          }
+        },
+        {
+          "name": "Actualizar categoría",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/categorias/{{id_categoria}}",
+            "description": "Actualización parcial. Puedes enviar nombre, color_ui o ambos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Empaques retail\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Borrar categoría",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/categorias/{{id_categoria}}",
+            "description": "Borra la fila. Responde 204 sin cuerpo. Responde 409 si la categoría tiene productos."
+          },
+          "response": [
+            {
+              "name": "409 Con productos",
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"statusCode\": 409,\n  \"timestamp\": \"2026-10-07T15:00:00.000Z\",\n  \"path\": \"/categorias/1\",\n  \"message\": \"Categoría 1 tiene productos y no se puede borrar.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Productos",
+      "description": "CRUD de productos. Requiere una categoría existente. DELETE es baja lógica.",
+      "item": [
+        {
+          "name": "Crear producto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('productoId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/productos",
+            "description": "Crea un producto. precio_venta y costo_compra se envían como número y la respuesta los devuelve como string con dos decimales. Guarda el id en productoId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre_producto\": \"Caja mediana\",\n  \"imagen_url\": \"https://example.com/caja.png\",\n  \"cantidad_en_existencia\": 10,\n  \"stock_minimo\": 2,\n  \"sku\": \"CAJA-MED\",\n  \"codigo_barras\": \"7501234567890\",\n  \"precio_venta\": 199.5,\n  \"costo_compra\": 80,\n  \"es_servicio\": false,\n  \"activo\": true,\n  \"id_categoria\": {{id_categoria}},\n  \"clave_producto_servicio\": \"01010101\",\n  \"clave_unidad_medida\": \"H87\",\n  \"objeto_impuesto\": \"02\",\n  \"impuesto_preset_ids\": [3]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": 1,\n  \"nombre_producto\": \"Caja mediana\",\n  \"imagen_url\": \"https://example.com/caja.png\",\n  \"cantidad_en_existencia\": 10,\n  \"stock_minimo\": 2,\n  \"sku\": \"CAJA-MED\",\n  \"codigo_barras\": \"7501234567890\",\n  \"precio_venta\": \"199.50\",\n  \"costo_compra\": \"80.00\",\n  \"es_servicio\": false,\n  \"activo\": true,\n  \"id_categoria\": 1,\n  \"clave_producto_servicio\": \"01010101\",\n  \"clave_unidad_medida\": \"H87\",\n  \"objeto_impuesto\": \"02\",\n  \"created_at\": \"2026-10-07T15:00:00.000Z\",\n  \"updated_at\": \"2026-10-07T15:00:00.000Z\",\n  \"impuestos\": [3]\n}"
+            },
+            {
+              "name": "404 Categoría inexistente",
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"statusCode\": 404,\n  \"timestamp\": \"2026-10-07T15:00:00.000Z\",\n  \"path\": \"/productos\",\n  \"message\": \"Categoría 999999999 no existe.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Listar productos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/productos?activo=true&pagina=1&limite=20",
+            "description": "Lista paginada. activo es opcional: true o false. pagina empieza en 1 y limite es como máximo 100."
+          }
+        },
+        {
+          "name": "Obtener producto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/productos/{{productoId}}",
+            "description": "Devuelve un producto aunque esté inactivo. 404 si el id no existe."
+          }
+        },
+        {
+          "name": "Actualizar producto",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/productos/{{productoId}}",
+            "description": "Actualización parcial. La existencia no se edita aquí: cambia con un movimiento. Si envías impuesto_preset_ids, reemplaza los impuestos del producto.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre_producto\": \"Caja mediana reforzada\",\n  \"precio_venta\": 220,\n  \"impuesto_preset_ids\": [3, 4]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Dar de baja producto",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/productos/{{productoId}}",
+            "description": "Baja lógica. Deja activo en false, conserva la fila y devuelve el producto."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Impuestos de producto",
+      "description": "Filas de producto_impuesto. Requiere un producto. Crear impuesto guarda el id en impuestoId. No se puede repetir el mismo impuesto_preset_id en el mismo producto.",
+      "item": [
+        {
+          "name": "Crear impuesto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('impuestoId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/productos/{{productoId}}/impuestos",
+            "description": "Asigna un preset de impuesto al producto. Guarda el id en impuestoId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"impuesto_preset_id\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Listar impuestos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/productos/{{productoId}}/impuestos?pagina=1&limite=20",
+            "description": "Lista paginada de los impuestos del producto."
+          }
+        },
+        {
+          "name": "Obtener impuesto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/productos/{{productoId}}/impuestos/{{impuestoId}}"
+          }
+        },
+        {
+          "name": "Actualizar impuesto",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/productos/{{productoId}}/impuestos/{{impuestoId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"impuesto_preset_id\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Borrar impuesto",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/productos/{{productoId}}/impuestos/{{impuestoId}}",
+            "description": "Borra la fila. Responde 204 sin cuerpo."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Impuestos",
+      "description": "Catálogo SAT de tasas y cuotas. El id 2 es IVA 16% traslado. Solo lectura.",
+      "item": [
+        {
+          "name": "Listar impuestos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/impuestos?pagina=1&limite=20",
+            "description": "Lista paginada. Usa el id como impuesto_preset_id al asignarlo a un producto."
+          }
+        },
+        {
+          "name": "Obtener impuesto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/impuestos/2",
+            "description": "IVA 16% traslado, clave 002, valor máximo 0.160000."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Movimientos",
+      "description": "Entrada suma existencia, Salida la resta y Ajuste aplica un delta con signo. El usuario es el del token. stock_previo y stock_nuevo los calcula la API.",
+      "item": [
+        {
+          "name": "Crear movimiento",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('movimientoId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/movimientos",
+            "description": "Entrada de 5 unidades a nombre del usuario del token. Guarda el id en movimientoId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"producto_id\": {{productoId}},\n  \"tipo_movimiento\": \"Entrada\",\n  \"cantidad\": 5,\n  \"motivo\": \"Compra\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Listar movimientos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/movimientos?pagina=1&limite=20&producto_id={{productoId}}"
+          }
+        },
+        {
+          "name": "Obtener movimiento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/movimientos/{{movimientoId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Claves de producto o servicio",
+      "description": "Catálogo SAT c_ClaveProdServ. La clave 01010101 es 'No existe en el catálogo'. Úsala en clave_producto_servicio del producto.",
+      "item": [
+        {
+          "name": "Buscar claves",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/claves-producto-servicio?busqueda=01010101&pagina=1&limite=20"
+          }
+        },
+        {
+          "name": "Obtener clave",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/claves-producto-servicio/01010101"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Claves de unidad",
+      "description": "Catálogo SAT c_ClaveUnidad. H87 es Pieza. Úsala en clave_unidad_medida del producto.",
+      "item": [
+        {
+          "name": "Buscar unidades",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/claves-unidad?busqueda=pieza&pagina=1&limite=20"
+          }
+        },
+        {
+          "name": "Obtener unidad",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/claves-unidad/H87"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Objetos de impuesto",
+      "description": "Catálogo SAT c_ObjetoImp. 02 es 'Sí objeto de impuesto.'. Úsalo en objeto_impuesto del producto.",
+      "item": [
+        {
+          "name": "Listar objetos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/objetos-impuesto?pagina=1&limite=20"
+          }
+        },
+        {
+          "name": "Obtener objeto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/objetos-impuesto/02"
+          }
+        }
+      ]
+    }
+  ]
+}
