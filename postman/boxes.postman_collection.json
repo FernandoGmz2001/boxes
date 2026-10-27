@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Boxes",
-    "description": "API local en http://localhost:3000. Empieza por Auth: el login guarda token y el resto de la colección lo envía como Bearer. Luego Categorías: Crear categoría guarda el id en id_categoria. Productos usa esa variable. El DELETE de producto deja activo en false. El DELETE de categoría borra la fila y responde 409 si todavía tiene productos. Crear movimiento ya no envía usuario_id: el autor sale del token.",
+    "description": "API local en http://localhost:3000. Empieza por Auth: el login guarda token y el resto de la colección lo envía como Bearer. Luego Categorías: Crear categoría guarda el id en id_categoria. Productos usa esa variable. Descargar plantilla de productos y luego Importar productos desde Excel cargan varios productos de un .xlsx. El DELETE de producto deja activo en false. El DELETE de categoría borra la fila y responde 409 si todavía tiene productos. Crear movimiento ya no envía usuario_id: el autor sale del token. Para vender: Abrir turno en una caja, luego Procesar venta; al final Vista previa del corte y Cerrar turno.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -41,6 +41,18 @@
     },
     {
       "key": "movimientoId",
+      "value": "1"
+    },
+    {
+      "key": "cajaId",
+      "value": "1"
+    },
+    {
+      "key": "turnoId",
+      "value": "1"
+    },
+    {
+      "key": "ventaId",
       "value": "1"
     }
   ],
@@ -211,7 +223,7 @@
     },
     {
       "name": "Productos",
-      "description": "CRUD de productos. Requiere una categoría existente. DELETE es baja lógica.",
+      "description": "CRUD de productos. Requiere una categoría existente. DELETE es baja lógica. La plantilla y la importación cargan varios productos desde un Excel .xlsx.",
       "item": [
         {
           "name": "Crear producto",
@@ -275,12 +287,85 @@
           ]
         },
         {
+          "name": "Descargar plantilla de productos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/productos/plantilla",
+            "description": "Descarga plantilla-productos.xlsx. La hoja productos trae los nombres de columna. La hoja instrucciones describe cada una. No incluye filas de ejemplo."
+          },
+          "response": [
+            {
+              "name": "200 Archivo",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                },
+                {
+                  "key": "Content-Disposition",
+                  "value": "attachment; filename=\"plantilla-productos.xlsx\""
+                }
+              ],
+              "body": ""
+            }
+          ]
+        },
+        {
+          "name": "Importar productos desde Excel",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/productos/importacion",
+            "description": "Campo archivo: el .xlsx de la plantilla con filas de productos. Máximo 500 filas y 2 MB. es_servicio y activo aceptan sí/no, verdadero/falso o 1/0. impuesto_preset_ids va separado por comas. Si una fila falla, no se guarda ninguna. 413 si el archivo supera 2 MB.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "archivo",
+                  "type": "file",
+                  "src": "",
+                  "description": "Excel .xlsx con la hoja productos."
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"creados\": 1,\n  \"productos\": [\n    {\n      \"id\": 2,\n      \"nombre_producto\": \"Caja importada\",\n      \"imagen_url\": null,\n      \"cantidad_en_existencia\": 4,\n      \"stock_minimo\": 1,\n      \"sku\": null,\n      \"codigo_barras\": null,\n      \"precio_venta\": \"15.50\",\n      \"costo_compra\": \"4.00\",\n      \"es_servicio\": false,\n      \"activo\": true,\n      \"id_categoria\": 1,\n      \"clave_producto_servicio\": null,\n      \"clave_unidad_medida\": null,\n      \"objeto_impuesto\": null,\n      \"created_at\": \"2026-10-09T15:00:00.000Z\",\n      \"updated_at\": \"2026-10-09T15:00:00.000Z\",\n      \"impuestos\": []\n    }\n  ]\n}"
+            },
+            {
+              "name": "400 Fila inválida",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"statusCode\": 400,\n  \"timestamp\": \"2026-10-09T15:00:00.000Z\",\n  \"path\": \"/productos/importacion\",\n  \"message\": [\n    \"Fila 3: Categoría 999999999 no existe.\"\n  ]\n}"
+            }
+          ]
+        },
+        {
           "name": "Listar productos",
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/productos?activo=true&pagina=1&limite=20",
-            "description": "Lista paginada. activo es opcional: true o false. pagina empieza en 1 y limite es como máximo 100."
+            "url": "{{baseUrl}}/productos?busqueda=caja&activo=true&pagina=1&limite=20",
+            "description": "Lista paginada. busqueda es opcional y busca en nombre, SKU y código de barras, sin distinguir mayúsculas. activo es opcional: true o false. pagina empieza en 1 y limite es como máximo 100."
           }
         },
         {
@@ -303,10 +388,33 @@
               }
             ],
             "url": "{{baseUrl}}/productos/{{productoId}}",
-            "description": "Actualización parcial. La existencia no se edita aquí: cambia con un movimiento. Si envías impuesto_preset_ids, reemplaza los impuestos del producto.",
+            "description": "Actualización parcial de un producto. La existencia no se edita aquí: cambia con un movimiento. Si envías impuesto_preset_ids, reemplaza los impuestos del producto.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"nombre_producto\": \"Caja mediana reforzada\",\n  \"precio_venta\": 220,\n  \"impuesto_preset_ids\": [3, 4]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Actualizar varios productos",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/productos",
+            "description": "Actualiza varios productos en una sola petición. Cada elemento lleva id y los mismos campos parciales que Actualizar producto. Máximo 100. Si un id no existe, no se guarda ninguno. La existencia no se edita aquí.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productos\": [\n    {\n      \"id\": {{productoId}},\n      \"precio_venta\": 220,\n      \"stock_minimo\": 3\n    },\n    {\n      \"id\": 2,\n      \"nombre_producto\": \"Caja chica\",\n      \"activo\": false\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -440,6 +548,30 @@
       ]
     },
     {
+      "name": "Unidades",
+      "description": "Catálogo de unidades de inventario. El id 1 es Unidad (pza), el 2 es Metro y el 6 es Gramo. Solo lectura.",
+      "item": [
+        {
+          "name": "Listar unidades",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/unidades?pagina=1&limite=20",
+            "description": "Lista paginada del catálogo: unidad, metro, gramo y el resto de medidas."
+          }
+        },
+        {
+          "name": "Obtener unidad",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/unidades/2",
+            "description": "Metro, símbolo m."
+          }
+        }
+      ]
+    },
+    {
       "name": "Movimientos",
       "description": "Entrada suma existencia, Salida la resta y Ajuste aplica un delta con signo. El usuario es el del token. stock_previo y stock_nuevo los calcula la API.",
       "item": [
@@ -492,6 +624,280 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/movimientos/{{movimientoId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cajas",
+      "description": "Cajas físicas del punto de venta. Crear y editar piden el permiso cajas; listar y obtener también aceptan ventas, para que el cajero elija dónde abrir turno. El seed crea Caja 1.",
+      "item": [
+        {
+          "name": "Crear caja",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('cajaId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cajas",
+            "description": "activa es opcional y vale true por defecto. 409 si el nombre ya existe. Guarda el id en cajaId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Caja 2\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Listar cajas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/cajas?pagina=1&limite=20&activa=true"
+          }
+        },
+        {
+          "name": "Obtener caja",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/cajas/{{cajaId}}"
+          }
+        },
+        {
+          "name": "Editar caja",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/cajas/{{cajaId}}",
+            "description": "Cambia el nombre o desactiva la caja. 409 si se intenta desactivar con un turno abierto.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Caja 2 mostrador\",\n  \"activa\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Turnos",
+      "description": "Flujo del POS: abrir turno, vender, registrar entradas o retiros de efectivo, revisar el corte y cerrar. Cada caja y cada usuario tienen como máximo un turno abierto. Con ventas se operan los turnos propios; con cajas también los de otros usuarios.",
+      "item": [
+        {
+          "name": "Abrir turno",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('turnoId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/turnos",
+            "description": "Abre un turno del usuario del token en la caja indicada. 409 si la caja o el usuario ya tienen turno abierto, o si la caja está inactiva. Guarda el id en turnoId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caja_id\": {{cajaId}},\n  \"fondo_inicial\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Turno actual",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('turnoId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/turnos/actual",
+            "description": "Turno abierto del usuario del token; 404 si no tiene. El front lo consulta al cargar el POS."
+          }
+        },
+        {
+          "name": "Listar turnos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/turnos?pagina=1&limite=20&estado=Abierto",
+            "description": "Pide el permiso cajas. Filtros: caja_id, usuario_id, estado (Abierto o Cerrado), fecha_desde y fecha_hasta en ISO 8601 sobre abierto_at."
+          }
+        },
+        {
+          "name": "Obtener turno",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/turnos/{{turnoId}}",
+            "description": "Incluye la caja y los movimientos de efectivo."
+          }
+        },
+        {
+          "name": "Registrar movimiento de caja",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/turnos/{{turnoId}}/movimientos",
+            "description": "tipo acepta Entrada o Retiro. 400 si el retiro supera el efectivo esperado y 409 si el turno ya está cerrado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo\": \"Retiro\",\n  \"monto\": 200,\n  \"motivo\": \"Depósito al banco\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Vista previa del corte",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/turnos/{{turnoId}}/corte",
+            "description": "No guarda nada. efectivo_esperado = fondo_inicial + ventas en Efectivo + entradas - retiros."
+          }
+        },
+        {
+          "name": "Cerrar turno",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/turnos/{{turnoId}}/cierre",
+            "description": "Recalcula el corte, guarda efectivo_esperado y diferencia (contado - esperado) y cierra el turno. Responde 200 con turno y corte. 409 si ya estaba cerrado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"efectivo_contado\": 480,\n  \"notas\": \"Sin novedades\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ventas",
+      "description": "Procesa una venta en una sola transacción: exige un turno abierto del usuario del token, toma el precio de producto.precio_venta, crea la venta con folio automático, guarda el detalle, descuenta stock y registra una Salida en movimientos por producto. Si algo falla no se guarda nada. Pide el permiso ventas; con cajas se consultan las ventas de todos.",
+      "item": [
+        {
+          "name": "Procesar venta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('ventaId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/ventas",
+            "description": "metodo_pago acepta Efectivo, Tarjeta o Transferencia. cliente_id es opcional. No se envían precios ni total. 400 si falta existencia, 404 si un producto no existe y 409 si está inactivo o si el usuario no tiene turno abierto. Guarda el id en ventaId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metodo_pago\": \"Efectivo\",\n  \"carrito\": [\n    {\n      \"producto_id\": {{productoId}},\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Listar ventas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/ventas?pagina=1&limite=20&turno_id={{turnoId}}",
+            "description": "Filtros: turno_id, usuario_id, folio (parcial), fecha_desde y fecha_hasta en ISO 8601. Sin el permiso cajas solo devuelve las ventas propias. articulos es la suma de cantidades."
+          }
+        },
+        {
+          "name": "Obtener venta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/ventas/{{ventaId}}",
+            "description": "Incluye el usuario y el nombre de cada producto para reimprimir el ticket."
           }
         }
       ]

@@ -1,8 +1,16 @@
+import type { Permiso } from '../permissions.js';
+
+export interface IAuthRol {
+  id: number;
+  nombre: string;
+}
+
 export interface IAuthUser {
   id: number;
   nombre: string;
   email: string;
-  rol: string;
+  rol: IAuthRol;
+  permisos: Permiso[];
   activo: boolean;
 }
 

@@ -41,7 +41,6 @@ export class AuthService {
     const payload: IJwtPayload = {
       sub: record.id,
       email: record.email,
-      rol: record.rol,
     };
     const accessToken: string = await this.jwtService.signAsync(payload);
 
@@ -58,6 +57,7 @@ function toAuthUser(record: IAuthUserRecord): IAuthUser {
     nombre: record.nombre,
     email: record.email,
     rol: record.rol,
+    permisos: record.permisos,
     activo: record.activo,
   };
 }

@@ -35,13 +35,62 @@ ON CONFLICT ("id") DO UPDATE SET
 
 SELECT setval(pg_get_serial_sequence('impuesto_preset', 'id'), (SELECT MAX("id") FROM "impuesto_preset"));
 
+INSERT INTO "unidad" ("id", "nombre", "simbolo") VALUES
+(1, 'Unidad', 'pza'),
+(2, 'Metro', 'm'),
+(3, 'Centímetro', 'cm'),
+(4, 'Metro cuadrado', 'm²'),
+(5, 'Kilogramo', 'kg'),
+(6, 'Gramo', 'g'),
+(7, 'Litro', 'L'),
+(8, 'Mililitro', 'ml'),
+(9, 'Caja', 'caja'),
+(10, 'Paquete', 'paq')
+ON CONFLICT ("id") DO UPDATE SET
+  "nombre" = EXCLUDED."nombre",
+  "simbolo" = EXCLUDED."simbolo";
+
+SELECT setval(pg_get_serial_sequence('unidad', 'id'), (SELECT MAX("id") FROM "unidad"));
+
+-- Roles base. admin es de sistema: siempre conserva todos los módulos.
+INSERT INTO "rol" ("nombre", "descripcion", "es_sistema") VALUES
+('admin', 'Acceso total al sistema.', TRUE),
+('operador', 'Opera el inventario y sus movimientos.', FALSE),
+('cajero', 'Abre turnos y vende en el punto de venta.', FALSE)
+ON CONFLICT ("nombre") DO NOTHING;
+
+INSERT INTO "rol_permiso" ("rol_id", "permiso")
+SELECT "rol"."id", "permiso"."clave"
+FROM "rol"
+CROSS JOIN (VALUES ('productos'), ('movimientos'), ('usuarios'), ('roles'), ('ventas'), ('cajas')) AS "permiso"("clave")
+WHERE "rol"."nombre" = 'admin'
+ON CONFLICT ("rol_id", "permiso") DO NOTHING;
+
+INSERT INTO "rol_permiso" ("rol_id", "permiso")
+SELECT "rol"."id", 'ventas'
+FROM "rol"
+WHERE "rol"."nombre" = 'cajero'
+ON CONFLICT ("rol_id", "permiso") DO NOTHING;
+
+-- Caja inicial del punto de venta.
+INSERT INTO "caja" ("nombre") VALUES ('Caja 1')
+ON CONFLICT ("nombre") DO NOTHING;
+
+INSERT INTO "rol_permiso" ("rol_id", "permiso")
+SELECT "rol"."id", "permiso"."clave"
+FROM "rol"
+CROSS JOIN (VALUES ('productos'), ('movimientos')) AS "permiso"("clave")
+WHERE "rol"."nombre" = 'operador'
+ON CONFLICT ("rol_id", "permiso") DO NOTHING;
+
 -- Admin de desarrollo. Contraseña documentada en .env.example (SEED_ADMIN_PASSWORD).
-INSERT INTO "usuario" ("nombre", "email", "password", "rol", "activo")
-VALUES (
+INSERT INTO "usuario" ("nombre", "email", "password", "rol_id", "activo")
+SELECT
   'Administrador',
   'admin@boxes.local',
   '$argon2id$v=19$m=65536,p=4,t=3$foXuvPgfee6Fp5eLGGGANg$gftKqkhIlhJmIcgaKdLqeWJH8iK+C7/UeKN85868r5A',
-  'admin',
+  "rol"."id",
   TRUE
-)
+FROM "rol"
+WHERE "rol"."nombre" = 'admin'
 ON CONFLICT ("email") DO NOTHING;

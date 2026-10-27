@@ -4,11 +4,18 @@ import { PrismaService } from '../../../shared/prisma/prisma.service.js';
 import type { IPageResult } from '../../../shared/pagination/paginated.interface.js';
 import type { IProducto } from '../interfaces/producto.interface.js';
 import type {
+  IImportReferences,
+  IImportReferencesQuery,
+} from '../interfaces/import-productos.interface.js';
+import type {
   ICategoriaRef,
   ICreateProducto,
+  IDeactivateManyProductosResult,
   IListProductos,
   IProductsRepository,
+  IUpdateManyProductosResult,
   IUpdateProducto,
+  IUpdateProductoItem,
 } from '../interfaces/products-repository.interface.js';
 
 type ProductoRecord = Prisma.productoGetPayload<{
@@ -62,8 +69,28 @@ export class ProductsRepository implements IProductsRepository {
   }
 
   async findAll(filter: IListProductos): Promise<IPageResult<IProducto>> {
-    const where: Prisma.productoWhereInput | undefined =
-      filter.activo === undefined ? undefined : { activo: filter.activo };
+    const where: Prisma.productoWhereInput = {
+      ...(filter.activo === undefined ? {} : { activo: filter.activo }),
+      ...(filter.busqueda
+        ? {
+            OR: [
+              {
+                nombre_producto: {
+                  contains: filter.busqueda,
+                  mode: 'insensitive',
+                },
+              },
+              { sku: { contains: filter.busqueda, mode: 'insensitive' } },
+              {
+                codigo_barras: {
+                  contains: filter.busqueda,
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          }
+        : {}),
+    };
     const skip: number = (filter.pagina - 1) * filter.limite;
 
     const [records, total]: [ProductoRecord[], number] = await Promise.all([
@@ -97,29 +124,7 @@ export class ProductsRepository implements IProductsRepository {
     const created: ProductoRecord = await this.prisma.client.$transaction(
       async (transaction): Promise<ProductoRecord> => {
         return transaction.producto.create({
-          data: {
-            nombre_producto: input.nombre_producto,
-            imagen_url: input.imagen_url,
-            cantidad_en_existencia: input.cantidad_en_existencia,
-            stock_minimo: input.stock_minimo,
-            sku: input.sku,
-            codigo_barras: input.codigo_barras,
-            precio_venta: input.precio_venta,
-            costo_compra: input.costo_compra,
-            es_servicio: input.es_servicio,
-            activo: input.activo,
-            id_categoria: input.id_categoria,
-            clave_producto_servicio: input.clave_producto_servicio,
-            clave_unidad_medida: input.clave_unidad_medida,
-            objeto_impuesto: input.objeto_impuesto,
-            impuestos: {
-              create: input.impuesto_preset_ids.map(
-                (impuesto_preset_id: number) => ({
-                  impuesto_preset_id,
-                }),
-              ),
-            },
-          },
+          data: toCreateData(input),
           include: productoInclude,
         });
       },
@@ -128,53 +133,234 @@ export class ProductsRepository implements IProductsRepository {
     return toProducto(created);
   }
 
-  async update(id: number, input: IUpdateProducto): Promise<IProducto | null> {
-    const updated: ProductoRecord | null = await this.prisma.client.$transaction(
-      async (transaction): Promise<ProductoRecord | null> => {
-        const existing: { id: number } | null =
-          await transaction.producto.findUnique({
-            where: { id },
-            select: { id: true },
-          });
+  async createMany(inputs: ICreateProducto[]): Promise<IProducto[]> {
+    const created: ProductoRecord[] = await this.prisma.client.$transaction(
+      async (transaction): Promise<ProductoRecord[]> => {
+        const records: ProductoRecord[] = [];
 
-        if (!existing) {
-          return null;
+        for (const input of inputs) {
+          records.push(
+            await transaction.producto.create({
+              data: toCreateData(input),
+              include: productoInclude,
+            }),
+          );
         }
 
-        return transaction.producto.update({
-          where: { id },
-          data: toUpdateData(input),
-          include: productoInclude,
-        });
+        return records;
       },
     );
 
+    return created.map((record: ProductoRecord) => toProducto(record));
+  }
+
+  async findImportReferences(
+    query: IImportReferencesQuery,
+  ): Promise<IImportReferences> {
+    const [categorias, clavesProducto, clavesUnidad, objetos, presets]: [
+      { id: number }[],
+      { clave: string }[],
+      { clave: string }[],
+      { clave: string }[],
+      { id: number }[],
+    ] = await Promise.all([
+      query.categoriaIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.client.categoria.findMany({
+            where: { id: { in: query.categoriaIds } },
+            select: { id: true },
+          }),
+      query.clavesProductoServicio.length === 0
+        ? Promise.resolve([])
+        : this.prisma.client.clave_prod_serv.findMany({
+            where: { clave: { in: query.clavesProductoServicio } },
+            select: { clave: true },
+          }),
+      query.clavesUnidad.length === 0
+        ? Promise.resolve([])
+        : this.prisma.client.clave_unidad.findMany({
+            where: { clave: { in: query.clavesUnidad } },
+            select: { clave: true },
+          }),
+      query.objetosImpuesto.length === 0
+        ? Promise.resolve([])
+        : this.prisma.client.objeto_imp.findMany({
+            where: { clave: { in: query.objetosImpuesto } },
+            select: { clave: true },
+          }),
+      query.impuestoPresetIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.client.impuesto_preset.findMany({
+            where: { id: { in: query.impuestoPresetIds } },
+            select: { id: true },
+          }),
+    ]);
+
+    return {
+      categoriaIds: categorias.map((categoria: { id: number }) => categoria.id),
+      clavesProductoServicio: clavesProducto.map(
+        (record: { clave: string }) => record.clave,
+      ),
+      clavesUnidad: clavesUnidad.map(
+        (record: { clave: string }) => record.clave,
+      ),
+      objetosImpuesto: objetos.map((record: { clave: string }) => record.clave),
+      impuestoPresetIds: presets.map((preset: { id: number }) => preset.id),
+    };
+  }
+
+  async update(id: number, input: IUpdateProducto): Promise<IProducto | null> {
+    const updated: ProductoRecord | null =
+      await this.prisma.client.$transaction(
+        async (transaction): Promise<ProductoRecord | null> => {
+          const existing: { id: number } | null =
+            await transaction.producto.findUnique({
+              where: { id },
+              select: { id: true },
+            });
+
+          if (!existing) {
+            return null;
+          }
+
+          return transaction.producto.update({
+            where: { id },
+            data: toUpdateData(input),
+            include: productoInclude,
+          });
+        },
+      );
+
     return updated ? toProducto(updated) : null;
+  }
+
+  async updateMany(
+    items: IUpdateProductoItem[],
+  ): Promise<IUpdateManyProductosResult> {
+    return this.prisma.client.$transaction(
+      async (transaction): Promise<IUpdateManyProductosResult> => {
+        const ids: number[] = items.map((item: IUpdateProductoItem) => item.id);
+        const existing: { id: number }[] = await transaction.producto.findMany({
+          where: { id: { in: ids } },
+          select: { id: true },
+        });
+        const existingIds: Set<number> = new Set(
+          existing.map((record: { id: number }) => record.id),
+        );
+        const missingIds: number[] = ids.filter(
+          (id: number) => !existingIds.has(id),
+        );
+
+        if (missingIds.length > 0) {
+          return { missingIds, productos: [] };
+        }
+
+        const productos: IProducto[] = [];
+
+        for (const item of items) {
+          const { id, ...changes } = item;
+          const record: ProductoRecord = await transaction.producto.update({
+            where: { id },
+            data: toUpdateData(changes),
+            include: productoInclude,
+          });
+          productos.push(toProducto(record));
+        }
+
+        return { missingIds: [], productos };
+      },
+    );
   }
 
   async deactivate(id: number): Promise<IProducto | null> {
-    const updated: ProductoRecord | null = await this.prisma.client.$transaction(
-      async (transaction): Promise<ProductoRecord | null> => {
-        const existing: { id: number } | null =
-          await transaction.producto.findUnique({
+    const updated: ProductoRecord | null =
+      await this.prisma.client.$transaction(
+        async (transaction): Promise<ProductoRecord | null> => {
+          const existing: { id: number } | null =
+            await transaction.producto.findUnique({
+              where: { id },
+              select: { id: true },
+            });
+
+          if (!existing) {
+            return null;
+          }
+
+          return transaction.producto.update({
             where: { id },
-            select: { id: true },
+            data: { activo: false },
+            include: productoInclude,
           });
-
-        if (!existing) {
-          return null;
-        }
-
-        return transaction.producto.update({
-          where: { id },
-          data: { activo: false },
-          include: productoInclude,
-        });
-      },
-    );
+        },
+      );
 
     return updated ? toProducto(updated) : null;
   }
+
+  async deactivateMany(ids: number[]): Promise<IDeactivateManyProductosResult> {
+    return this.prisma.client.$transaction(
+      async (transaction): Promise<IDeactivateManyProductosResult> => {
+        const existing: { id: number }[] = await transaction.producto.findMany({
+          where: { id: { in: ids } },
+          select: { id: true },
+        });
+        const existingIds: Set<number> = new Set(
+          existing.map((record: { id: number }) => record.id),
+        );
+        const missingIds: number[] = ids.filter(
+          (id: number) => !existingIds.has(id),
+        );
+
+        if (missingIds.length > 0) {
+          return { missingIds, productos: [] };
+        }
+
+        await transaction.producto.updateMany({
+          where: { id: { in: ids } },
+          data: { activo: false },
+        });
+
+        const records: ProductoRecord[] = await transaction.producto.findMany({
+          where: { id: { in: ids } },
+          include: productoInclude,
+          orderBy: { id: 'asc' },
+        });
+
+        return {
+          missingIds: [],
+          productos: records.map((record: ProductoRecord) =>
+            toProducto(record),
+          ),
+        };
+      },
+    );
+  }
+}
+
+function toCreateData(
+  input: ICreateProducto,
+): Prisma.productoUncheckedCreateInput {
+  return {
+    nombre_producto: input.nombre_producto,
+    imagen_url: input.imagen_url,
+    cantidad_en_existencia: input.cantidad_en_existencia,
+    stock_minimo: input.stock_minimo,
+    sku: input.sku,
+    codigo_barras: input.codigo_barras,
+    precio_venta: input.precio_venta,
+    costo_compra: input.costo_compra,
+    es_servicio: input.es_servicio,
+    activo: input.activo,
+    id_categoria: input.id_categoria,
+    clave_producto_servicio: input.clave_producto_servicio,
+    clave_unidad_medida: input.clave_unidad_medida,
+    objeto_impuesto: input.objeto_impuesto,
+    impuestos: {
+      create: input.impuesto_preset_ids.map((impuesto_preset_id: number) => ({
+        impuesto_preset_id,
+      })),
+    },
+  };
 }
 
 function toUpdateData(input: IUpdateProducto): Prisma.productoUpdateInput {

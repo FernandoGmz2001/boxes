@@ -8,7 +8,9 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { Roles } from '../../auth/decorators/roles.decorator.js';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator.js';
+import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
+import type { IAuthUser } from '../../auth/interfaces/auth-user.interface.js';
 import type { IPage } from '../../../shared/pagination/paginated.interface.js';
 import { CreateUserDto } from '../dtos/create-user.dto.js';
 import { ListUsersQueryDto } from '../dtos/list-users-query.dto.js';
@@ -16,7 +18,7 @@ import { UpdateUserDto } from '../dtos/update-user.dto.js';
 import type { IUsuario } from '../interfaces/usuario.interface.js';
 import { UsersService } from '../services/users.service.js';
 
-@Roles('admin')
+@RequirePermissions('usuarios')
 @Controller('usuarios')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -44,7 +46,8 @@ export class UsersController {
   async updateUser(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
+    @CurrentUser() currentUser: IAuthUser,
   ): Promise<IUsuario> {
-    return this.usersService.updateUser(id, updateUserDto);
+    return this.usersService.updateUser(id, updateUserDto, currentUser);
   }
 }

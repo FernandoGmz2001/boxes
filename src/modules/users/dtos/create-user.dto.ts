@@ -1,5 +1,4 @@
-import { IsEmail, IsIn, IsNotEmpty, IsString, MinLength } from 'class-validator';
-import { ROLES } from '../../auth/roles.js';
+import { IsEmail, IsInt, IsNotEmpty, IsString, Min, MinLength } from 'class-validator';
 
 export class CreateUserDto {
   @IsString()
@@ -13,7 +12,7 @@ export class CreateUserDto {
   @MinLength(8)
   password: string;
 
-  @IsString()
-  @IsIn(ROLES)
-  rol: string;
+  @IsInt()
+  @Min(1)
+  rol_id: number;
 }

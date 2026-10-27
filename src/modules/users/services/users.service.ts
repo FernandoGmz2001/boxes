@@ -1,9 +1,11 @@
 import {
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { IAuthUser } from '../../auth/interfaces/auth-user.interface.js';
 import type {
   IPage,
   IPagination,
@@ -33,7 +35,13 @@ export class UsersService {
   async findAllUsers(query: ListUsersQueryDto): Promise<IPage<IUsuario>> {
     const pagination: IPagination = resolvePagination(query);
 
-    return toPage(await this.usersRepository.findAll(pagination), pagination);
+    return toPage(
+      await this.usersRepository.findAll(pagination, {
+        busqueda: query.busqueda,
+        activo: query.activo,
+      }),
+      pagination,
+    );
   }
 
   async findUserById(id: number): Promise<IUsuario> {
@@ -48,21 +56,29 @@ export class UsersService {
 
   async createUser(createUserDto: CreateUserDto): Promise<IUsuario> {
     await this.assertEmailAvailable(createUserDto.email);
+    await this.assertRolExists(createUserDto.rol_id);
 
     return this.usersRepository.create({
       nombre: createUserDto.nombre,
       email: createUserDto.email,
       password: await hashPassword(createUserDto.password),
-      rol: createUserDto.rol,
+      rol_id: createUserDto.rol_id,
     });
   }
 
   async updateUser(
     id: number,
     updateUserDto: UpdateUserDto,
+    currentUser: IAuthUser,
   ): Promise<IUsuario> {
+    if (id === currentUser.id) {
+      assertKeepsOwnAccess(updateUserDto, currentUser);
+    }
     if (updateUserDto.email !== undefined) {
       await this.assertEmailAvailable(updateUserDto.email, id);
+    }
+    if (updateUserDto.rol_id !== undefined) {
+      await this.assertRolExists(updateUserDto.rol_id);
     }
 
     const input: IUpdateUsuario = {};
@@ -76,8 +92,8 @@ export class UsersService {
     if (updateUserDto.password !== undefined) {
       input.password = await hashPassword(updateUserDto.password);
     }
-    if (updateUserDto.rol !== undefined) {
-      input.rol = updateUserDto.rol;
+    if (updateUserDto.rol_id !== undefined) {
+      input.rol_id = updateUserDto.rol_id;
     }
     if (updateUserDto.activo !== undefined) {
       input.activo = updateUserDto.activo;
@@ -105,5 +121,28 @@ export class UsersService {
     if (existing && existing.id !== currentId) {
       throw new ConflictException(`El email ${email} ya está registrado.`);
     }
+  }
+
+  private async assertRolExists(rolId: number): Promise<void> {
+    if (!(await this.usersRepository.rolExists(rolId))) {
+      throw new NotFoundException(`Rol ${rolId} no existe.`);
+    }
+  }
+}
+
+/** Evita que alguien se deje sin acceso a sí mismo. */
+function assertKeepsOwnAccess(
+  updateUserDto: UpdateUserDto,
+  currentUser: IAuthUser,
+): void {
+  const deactivates: boolean = updateUserDto.activo === false;
+  const changesRol: boolean =
+    updateUserDto.rol_id !== undefined &&
+    updateUserDto.rol_id !== currentUser.rol.id;
+
+  if (deactivates || changesRol) {
+    throw new ForbiddenException(
+      'No puedes cambiar tu propio rol ni desactivarte.',
+    );
   }
 }

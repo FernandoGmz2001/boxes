@@ -41,6 +41,10 @@ export const productValidationMessages: ModuleValidationMessages = {
   activo: {
     isBoolean: 'Activo debe ser verdadero o falso.',
   },
+  busqueda: {
+    isString: 'La búsqueda debe ser un texto.',
+    isNotEmpty: 'La búsqueda no puede estar vacía.',
+  },
   pagina: {
     isInt: 'La página debe ser un número entero.',
     min: 'La página debe ser mayor a cero.',
@@ -49,6 +53,16 @@ export const productValidationMessages: ModuleValidationMessages = {
     isInt: 'El límite debe ser un número entero.',
     min: 'El límite debe ser mayor a cero.',
     max: 'El límite no puede ser mayor a 100.',
+  },
+  id: {
+    isInt: 'El producto debe ser un número entero.',
+    min: 'El producto no es válido.',
+  },
+  productos: {
+    isArray: 'Los productos deben enviarse como una lista.',
+    arrayMinSize: 'Debes enviar al menos un producto.',
+    arrayMaxSize: 'No se pueden actualizar más de 100 productos a la vez.',
+    arrayUnique: 'Los productos no deben repetirse.',
   },
   id_categoria: {
     isInt: 'La categoría debe ser un número entero.',

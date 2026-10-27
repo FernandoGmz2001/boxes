@@ -1,13 +1,13 @@
 import {
   IsBoolean,
   IsEmail,
-  IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
+  Min,
   MinLength,
 } from 'class-validator';
-import { ROLES } from '../../auth/roles.js';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -25,9 +25,9 @@ export class UpdateUserDto {
   password?: string;
 
   @IsOptional()
-  @IsString()
-  @IsIn(ROLES)
-  rol?: string;
+  @IsInt()
+  @Min(1)
+  rol_id?: number;
 
   @IsOptional()
   @IsBoolean()

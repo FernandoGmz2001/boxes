@@ -12,12 +12,16 @@ export const userValidationMessages: ModuleValidationMessages = {
     isString: 'La contraseña debe ser un texto.',
     minLength: 'La contraseña debe tener al menos 8 caracteres.',
   },
-  rol: {
-    isString: 'El rol debe ser un texto.',
-    isIn: 'El rol debe ser admin u operador.',
+  rol_id: {
+    isInt: 'El rol debe ser un número entero.',
+    min: 'Selecciona un rol válido.',
   },
   activo: {
     isBoolean: 'Activo debe ser verdadero o falso.',
+  },
+  busqueda: {
+    isString: 'La búsqueda debe ser un texto.',
+    isNotEmpty: 'La búsqueda no puede estar vacía.',
   },
   pagina: {
     isInt: 'La página debe ser un número entero.',

@@ -49,7 +49,8 @@ describe('AuthService', () => {
       id: 1,
       nombre: 'Administrador',
       email: 'admin@boxes.local',
-      rol: 'admin',
+      rol: { id: 1, nombre: 'admin' },
+      permisos: ['productos', 'movimientos', 'usuarios', 'roles'],
       activo: true,
       password: passwordHash,
     };
@@ -65,13 +66,13 @@ describe('AuthService', () => {
       id: 1,
       nombre: 'Administrador',
       email: 'admin@boxes.local',
-      rol: 'admin',
+      rol: { id: 1, nombre: 'admin' },
+      permisos: ['productos', 'movimientos', 'usuarios', 'roles'],
       activo: true,
     });
     expect(jwtService.signAsync).toHaveBeenCalledWith({
       sub: 1,
       email: 'admin@boxes.local',
-      rol: 'admin',
     });
   });
 
@@ -80,7 +81,8 @@ describe('AuthService', () => {
       id: 1,
       nombre: 'Administrador',
       email: 'admin@boxes.local',
-      rol: 'admin',
+      rol: { id: 1, nombre: 'admin' },
+      permisos: ['productos', 'movimientos', 'usuarios', 'roles'],
       activo: false,
       password: passwordHash,
     });

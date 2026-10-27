@@ -1,8 +1,13 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PaginationQueryDto } from '../../../shared/pagination/pagination-query.dto.js';
 
 export class ListProductsQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  busqueda?: string;
+
   @IsOptional()
   @Transform(({ value }: { value: unknown }): unknown => {
     if (value === 'true' || value === true) {

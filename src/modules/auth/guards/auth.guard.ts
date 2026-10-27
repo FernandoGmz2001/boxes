@@ -14,7 +14,7 @@ import {
 } from '../interfaces/auth-repository.interface.js';
 import type { IAuthUser } from '../interfaces/auth-user.interface.js';
 import type { IJwtPayload } from '../interfaces/jwt-payload.interface.js';
-import { IS_PUBLIC_KEY } from '../roles.js';
+import { IS_PUBLIC_KEY } from '../permissions.js';
 
 @Injectable()
 export class AuthGuard implements CanActivate {

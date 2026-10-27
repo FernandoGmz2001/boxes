@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma, usuario } from '../../../generated/prisma/client.js';
+import type { Prisma } from '../../../generated/prisma/client.js';
 import type {
   IPageResult,
   IPagination,
@@ -10,31 +10,37 @@ import type {
   ICreateUsuario,
   IUpdateUsuario,
   IUsersRepository,
+  IUsuarioFilters,
 } from '../interfaces/users-repository.interface.js';
 
 const usuarioSelect = {
   id: true,
   nombre: true,
   email: true,
-  rol: true,
+  rol: { select: { id: true, nombre: true } },
   activo: true,
-} as const;
+} satisfies Prisma.usuarioSelect;
 
 @Injectable()
 export class UsersRepository implements IUsersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(pagination: IPagination): Promise<IPageResult<IUsuario>> {
+  async findAll(
+    pagination: IPagination,
+    filters: IUsuarioFilters,
+  ): Promise<IPageResult<IUsuario>> {
     const skip: number = (pagination.pagina - 1) * pagination.limite;
+    const where: Prisma.usuarioWhereInput = toWhere(filters);
 
     const [records, total]: [IUsuario[], number] = await Promise.all([
       this.prisma.client.usuario.findMany({
+        where,
         select: usuarioSelect,
         orderBy: { id: 'asc' },
         skip,
         take: pagination.limite,
       }),
-      this.prisma.client.usuario.count(),
+      this.prisma.client.usuario.count({ where }),
     ]);
 
     return { items: records, total };
@@ -54,13 +60,22 @@ export class UsersRepository implements IUsersRepository {
     });
   }
 
+  async rolExists(rolId: number): Promise<boolean> {
+    const rol: { id: number } | null = await this.prisma.client.rol.findUnique({
+      where: { id: rolId },
+      select: { id: true },
+    });
+
+    return rol !== null;
+  }
+
   async create(input: ICreateUsuario): Promise<IUsuario> {
     return this.prisma.client.usuario.create({
       data: {
         nombre: input.nombre,
         email: input.email,
         password: input.password,
-        rol: input.rol,
+        rol: { connect: { id: input.rol_id } },
       },
       select: usuarioSelect,
     });
@@ -88,28 +103,33 @@ export class UsersRepository implements IUsersRepository {
     if (input.password !== undefined) {
       data.password = input.password;
     }
-    if (input.rol !== undefined) {
-      data.rol = input.rol;
+    if (input.rol_id !== undefined) {
+      data.rol = { connect: { id: input.rol_id } };
     }
     if (input.activo !== undefined) {
       data.activo = input.activo;
     }
 
-    const updated: usuario = await this.prisma.client.usuario.update({
+    return this.prisma.client.usuario.update({
       where: { id },
       data,
+      select: usuarioSelect,
     });
-
-    return toUsuario(updated);
   }
 }
 
-function toUsuario(record: usuario): IUsuario {
-  return {
-    id: record.id,
-    nombre: record.nombre,
-    email: record.email,
-    rol: record.rol,
-    activo: record.activo,
-  };
+function toWhere(filters: IUsuarioFilters): Prisma.usuarioWhereInput {
+  const where: Prisma.usuarioWhereInput = {};
+
+  if (filters.busqueda) {
+    where.OR = [
+      { nombre: { contains: filters.busqueda, mode: 'insensitive' } },
+      { email: { contains: filters.busqueda, mode: 'insensitive' } },
+    ];
+  }
+  if (filters.activo !== undefined) {
+    where.activo = filters.activo;
+  }
+
+  return where;
 }

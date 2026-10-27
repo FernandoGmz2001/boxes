@@ -6,10 +6,10 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { IAuthUser } from '../interfaces/auth-user.interface.js';
-import { IS_PUBLIC_KEY, ROLES_KEY, type Rol } from '../roles.js';
+import { IS_PUBLIC_KEY, PERMISOS_KEY, type Permiso } from '../permissions.js';
 
 @Injectable()
-export class RolesGuard implements CanActivate {
+export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -22,18 +22,20 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const requiredRoles: Rol[] | undefined = this.reflector.getAllAndOverride<
-      Rol[]
-    >(ROLES_KEY, [context.getHandler(), context.getClass()]);
+    const requiredPermisos: Permiso[] | undefined =
+      this.reflector.getAllAndOverride<Permiso[]>(PERMISOS_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
 
-    if (!requiredRoles || requiredRoles.length === 0) {
+    if (!requiredPermisos || requiredPermisos.length === 0) {
       return true;
     }
 
     const request = context.switchToHttp().getRequest<{ user?: IAuthUser }>();
-    const rol: string | undefined = request.user?.rol;
+    const permisos: Permiso[] = request.user?.permisos ?? [];
 
-    if (!rol || !requiredRoles.includes(rol as Rol)) {
+    if (!requiredPermisos.some((permiso: Permiso) => permisos.includes(permiso))) {
       throw new ForbiddenException('No tienes permiso para esta acción.');
     }
 

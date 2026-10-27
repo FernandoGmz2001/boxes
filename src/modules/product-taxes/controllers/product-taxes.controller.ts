@@ -11,6 +11,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { RequirePermissions } from '../../auth/decorators/require-permissions.decorator.js';
 import type { IPage } from '../../../shared/pagination/paginated.interface.js';
 import { CreateProductTaxDto } from '../dtos/create-product-tax.dto.js';
 import { ListProductTaxesQueryDto } from '../dtos/list-product-taxes-query.dto.js';
@@ -18,6 +19,7 @@ import { UpdateProductTaxDto } from '../dtos/update-product-tax.dto.js';
 import type { IProductoImpuesto } from '../interfaces/producto-impuesto.interface.js';
 import { ProductTaxesService } from '../services/product-taxes.service.js';
 
+@RequirePermissions('productos')
 @Controller('productos/:productoId/impuestos')
 export class ProductTaxesController {
   constructor(private readonly productTaxesService: ProductTaxesService) {}

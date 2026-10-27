@@ -1,8 +1,13 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import type { Response } from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/shared/configure-app.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
+import {
+  buildProductsSpreadsheet,
+  parseProductsSpreadsheet,
+} from '../src/modules/products/spreadsheet/product-spreadsheet.js';
 import { authed, loginAsAdmin } from './login.js';
 
 describe('Productos (e2e)', () => {
@@ -154,9 +159,30 @@ describe('Productos (e2e)', () => {
     expect(list.body.pagina).toBe(1);
     expect(list.body.limite).toBe(20);
 
-    const found = await api
-      .get(`/productos/${productoId}`)
+    const searched = await api
+      .get('/productos')
+      .query({ busqueda: 'caja grande' })
       .expect(200);
+
+    expect(searched.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: productoId,
+          nombre_producto: 'Caja grande',
+        }),
+      ]),
+    );
+
+    const unmatched = await api
+      .get('/productos')
+      .query({ busqueda: 'producto-inexistente-e2e' })
+      .expect(200);
+
+    expect(unmatched.body.data).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: productoId })]),
+    );
+
+    const found = await api.get(`/productos/${productoId}`).expect(200);
 
     expect(found.body.nombre_producto).toBe('Caja grande');
     expect(found.body.impuestos).toEqual([1, 2]);
@@ -200,4 +226,215 @@ describe('Productos (e2e)', () => {
 
     await api.get('/productos/999999999').expect(404);
   });
+
+  it('PATCH /productos updates several products or none', async () => {
+    const first = await api
+      .post('/productos')
+      .send({
+        nombre_producto: 'Lote A',
+        cantidad_en_existencia: 1,
+        stock_minimo: 1,
+        precio_venta: 10,
+        costo_compra: 4,
+        es_servicio: false,
+        id_categoria: categoriaId,
+      })
+      .expect(201);
+    const second = await api
+      .post('/productos')
+      .send({
+        nombre_producto: 'Lote B',
+        cantidad_en_existencia: 2,
+        stock_minimo: 1,
+        precio_venta: 20,
+        costo_compra: 8,
+        es_servicio: false,
+        id_categoria: categoriaId,
+      })
+      .expect(201);
+    const firstId: number = first.body.id;
+    const secondId: number = second.body.id;
+
+    const updated = await api
+      .patch('/productos')
+      .send({
+        productos: [
+          {
+            id: firstId,
+            nombre_producto: 'Lote A editado',
+            precio_venta: 11,
+          },
+          { id: secondId, stock_minimo: 9, activo: false },
+        ],
+      })
+      .expect(200);
+
+    expect(updated.body).toEqual([
+      expect.objectContaining({
+        id: firstId,
+        nombre_producto: 'Lote A editado',
+        precio_venta: '11.00',
+      }),
+      expect.objectContaining({
+        id: secondId,
+        stock_minimo: 9,
+        activo: false,
+        precio_venta: '20.00',
+      }),
+    ]);
+
+    const rejected = await api
+      .patch('/productos')
+      .send({
+        productos: [
+          { id: firstId, nombre_producto: 'No debe guardarse' },
+          { id: 999999999, nombre_producto: 'Fantasma' },
+        ],
+      })
+      .expect(404);
+
+    expect(rejected.body.message).toBe('Producto 999999999 no existe.');
+
+    const unchanged = await api.get(`/productos/${firstId}`).expect(200);
+    expect(unchanged.body.nombre_producto).toBe('Lote A editado');
+
+    await api
+      .patch('/productos')
+      .send({ productos: [{ id: firstId }] })
+      .expect(400);
+
+    await api
+      .patch('/productos')
+      .send({
+        productos: [
+          { id: firstId, precio_venta: 1 },
+          { id: firstId, precio_venta: 2 },
+        ],
+      })
+      .expect(400);
+  });
+
+  it('GET /productos/plantilla downloads an empty workbook', async () => {
+    const response = await api
+      .get('/productos/plantilla')
+      .buffer(true)
+      .parse(readBinaryBody)
+      .expect(200);
+
+    expect(response.headers['content-type']).toContain('spreadsheetml.sheet');
+    expect(response.headers['content-disposition']).toContain(
+      'plantilla-productos.xlsx',
+    );
+
+    const parsed = await parseProductsSpreadsheet(response.body as Buffer);
+
+    expect(parsed.errores).toEqual(['El archivo no tiene productos.']);
+  });
+
+  it('POST /productos/importacion creates products from an xlsx file', async () => {
+    const file = await buildProductsSpreadsheet([
+      {
+        nombre_producto: 'Importado excel',
+        cantidad_en_existencia: 3,
+        stock_minimo: 1,
+        precio_venta: 15.5,
+        costo_compra: 4,
+        es_servicio: false,
+        id_categoria: categoriaId,
+        clave_producto_servicio: '01010101',
+        clave_unidad_medida: 'H87',
+        objeto_impuesto: '02',
+        impuesto_preset_ids: '3',
+      },
+      {
+        nombre_producto: 'Servicio importado',
+        cantidad_en_existencia: 0,
+        stock_minimo: 0,
+        precio_venta: 100,
+        costo_compra: 0,
+        es_servicio: 'sí',
+        activo: 'no',
+        id_categoria: categoriaId,
+      },
+    ]);
+
+    const response = await api
+      .post('/productos/importacion')
+      .attach('archivo', file, 'productos.xlsx')
+      .expect(201);
+
+    expect(response.body.creados).toBe(2);
+    expect(response.body.productos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          nombre_producto: 'Importado excel',
+          precio_venta: '15.50',
+          id_categoria: categoriaId,
+          impuestos: [3],
+        }),
+        expect.objectContaining({
+          nombre_producto: 'Servicio importado',
+          es_servicio: true,
+          activo: false,
+          impuestos: [],
+        }),
+      ]),
+    );
+  });
+
+  it('POST /productos/importacion saves nothing when a row is invalid', async () => {
+    const before = await prisma.client.producto.count({
+      where: { id_categoria: categoriaId },
+    });
+    const file = await buildProductsSpreadsheet([
+      {
+        nombre_producto: 'No debe guardarse',
+        cantidad_en_existencia: 1,
+        stock_minimo: 0,
+        precio_venta: 10,
+        costo_compra: 1,
+        es_servicio: false,
+        id_categoria: categoriaId,
+      },
+      {
+        nombre_producto: 'Categoria mala',
+        cantidad_en_existencia: 1,
+        stock_minimo: 0,
+        precio_venta: 10,
+        costo_compra: 1,
+        es_servicio: false,
+        id_categoria: 999999999,
+      },
+    ]);
+
+    const response = await api
+      .post('/productos/importacion')
+      .attach('archivo', file, 'productos.xlsx')
+      .expect(400);
+
+    expect(response.body.message).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Fila 3: Categoría 999999999 no existe.'),
+      ]),
+    );
+
+    const after = await prisma.client.producto.count({
+      where: { id_categoria: categoriaId },
+    });
+    expect(after).toBe(before);
+  });
 });
+
+function readBinaryBody(
+  response: Response,
+  callback: (error: Error | null, body: Buffer) => void,
+): void {
+  const chunks: Buffer[] = [];
+
+  response.on('data', (chunk: Buffer) => {
+    chunks.push(chunk);
+  });
+  response.on('end', () => {
+    callback(null, Buffer.concat(chunks));
+  });
+}

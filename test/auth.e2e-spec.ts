@@ -43,20 +43,41 @@ describe('Auth (e2e)', () => {
     expect(response.body.message).toBe('Credenciales incorrectas.');
   });
 
+  it('returns the profile with the role permissions', async () => {
+    const response = await authed(app, token).get('/auth/perfil').expect(200);
+
+    expect(response.body.rol.nombre).toBe('admin');
+    expect(response.body.permisos).toEqual([
+      'productos',
+      'movimientos',
+      'usuarios',
+      'roles',
+      'ventas',
+      'cajas',
+    ]);
+    expect(response.body.password).toBeUndefined();
+  });
+
   it('lets an admin create a user and blocks an operador', async () => {
+    const operadorRol = await prisma.client.rol.findUniqueOrThrow({
+      where: { nombre: 'operador' },
+    });
     const created = await authed(app, token)
       .post('/usuarios')
       .send({
         nombre: 'Operador e2e',
         email: `operador-${Date.now()}@boxes.local`,
         password: 'operador-clave',
-        rol: 'operador',
+        rol_id: operadorRol.id,
       })
       .expect(201);
 
     operadorId = created.body.id;
     expect(created.body.password).toBeUndefined();
-    expect(created.body.rol).toBe('operador');
+    expect(created.body.rol).toEqual({
+      id: operadorRol.id,
+      nombre: 'operador',
+    });
 
     const operadorToken = (
       await request(app.getHttpServer())
@@ -65,12 +86,17 @@ describe('Auth (e2e)', () => {
         .expect(200)
     ).body.access_token as string;
 
-    await authed(app, operadorToken).post('/usuarios').send({
-      nombre: 'Intruso',
-      email: `intruso-${Date.now()}@boxes.local`,
-      password: 'intruso-clave',
-      rol: 'admin',
-    }).expect(403);
+    await authed(app, operadorToken)
+      .post('/usuarios')
+      .send({
+        nombre: 'Intruso',
+        email: `intruso-${Date.now()}@boxes.local`,
+        password: 'intruso-clave',
+        rol_id: operadorRol.id,
+      })
+      .expect(403);
+    await authed(app, operadorToken).get('/roles').expect(403);
+    await authed(app, operadorToken).get('/productos').expect(200);
 
     await authed(app, token)
       .patch(`/usuarios/${operadorId}`)

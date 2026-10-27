@@ -8,48 +8,164 @@ datasource db {
 }
 
 model categoria {
-  id        Int         @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   nombre    String
   color_ui  String?
   productos producto[]
 }
 
-model usuario {
+/// Unidades de medida del inventario (pieza, metro, gramo, etc.).
+model unidad {
+  id      Int    @id @default(autoincrement())
+  nombre  String @unique
+  simbolo String @unique
+}
+
+/// Tipo de usuario. Sus permisos son claves de módulo (productos, movimientos, usuarios, roles, ventas, cajas).
+/// Los roles es_sistema no se editan ni se borran.
+model rol {
   id          Int           @id @default(autoincrement())
-  nombre      String
-  email       String        @unique
-  password    String
-  rol         String
-  activo      Boolean       @default(true)
-  movimientos movimiento[]
+  nombre      String        @unique
+  descripcion String?
+  es_sistema  Boolean       @default(false)
+  permisos    rol_permiso[]
+  usuarios    usuario[]
+}
+
+model rol_permiso {
+  rol_id  Int
+  rol     rol    @relation(fields: [rol_id], references: [id], onDelete: Cascade)
+  permiso String
+
+  @@id([rol_id, permiso])
+}
+
+model usuario {
+  id               Int               @id @default(autoincrement())
+  nombre           String
+  email            String            @unique
+  password         String
+  rol_id           Int
+  rol              rol               @relation(fields: [rol_id], references: [id])
+  activo           Boolean           @default(true)
+  movimientos      movimiento[]
+  ventas           venta[]
+  turnos           turno_caja[]
+  movimientos_caja movimiento_caja[]
+
+  @@index([rol_id])
 }
 
 model producto {
-  id                       Int                 @id @default(autoincrement())
-  nombre_producto          String
-  imagen_url               String?
-  cantidad_en_existencia   Int
-  stock_minimo             Int
-  sku                      String?
-  codigo_barras            String?
-  precio_venta             Decimal             @db.Decimal(10, 2)
-  costo_compra             Decimal             @db.Decimal(10, 2)
-  es_servicio              Boolean
-  activo                   Boolean             @default(true)
-  id_categoria             Int
-  categoria                categoria           @relation(fields: [id_categoria], references: [id])
-  clave_producto_servicio  String?
-  clave_prod_serv          clave_prod_serv?    @relation(fields: [clave_producto_servicio], references: [clave])
-  clave_unidad_medida      String?
-  clave_unidad             clave_unidad?       @relation(fields: [clave_unidad_medida], references: [clave])
-  objeto_impuesto          String?
-  objeto_imp               objeto_imp?         @relation(fields: [objeto_impuesto], references: [clave])
-  created_at               DateTime            @default(now())
-  updated_at               DateTime            @updatedAt
-  movimientos              movimiento[]
-  impuestos                producto_impuesto[]
+  id                      Int                 @id @default(autoincrement())
+  nombre_producto         String
+  imagen_url              String?
+  cantidad_en_existencia  Int
+  stock_minimo            Int
+  sku                     String?
+  codigo_barras           String?
+  precio_venta            Decimal             @db.Decimal(10, 2)
+  costo_compra            Decimal             @db.Decimal(10, 2)
+  es_servicio             Boolean
+  activo                  Boolean             @default(true)
+  id_categoria            Int
+  categoria               categoria           @relation(fields: [id_categoria], references: [id])
+  clave_producto_servicio String?
+  clave_prod_serv         clave_prod_serv?    @relation(fields: [clave_producto_servicio], references: [clave])
+  clave_unidad_medida     String?
+  clave_unidad            clave_unidad?       @relation(fields: [clave_unidad_medida], references: [clave])
+  objeto_impuesto         String?
+  objeto_imp              objeto_imp?         @relation(fields: [objeto_impuesto], references: [clave])
+  created_at              DateTime            @default(now())
+  updated_at              DateTime            @updatedAt
+  movimientos             movimiento[]
+  impuestos               producto_impuesto[]
+  detalles_venta          detalle_venta[]
 
   @@index([id_categoria])
+}
+
+/// Caja física del punto de venta.
+model caja {
+  id     Int          @id @default(autoincrement())
+  nombre String       @unique
+  activa Boolean      @default(true)
+  turnos turno_caja[]
+}
+
+/// Turno de un usuario en una caja: Abierto o Cerrado.
+/// La migración agrega índices únicos parciales para que cada caja y cada usuario
+/// tengan como máximo un turno Abierto; Prisma no puede declararlos aquí.
+model turno_caja {
+  id                Int               @id @default(autoincrement())
+  caja_id           Int
+  caja              caja              @relation(fields: [caja_id], references: [id])
+  usuario_id        Int
+  usuario           usuario           @relation(fields: [usuario_id], references: [id])
+  estado            String            @default("Abierto")
+  fondo_inicial     Decimal           @db.Decimal(10, 2)
+  efectivo_esperado Decimal?          @db.Decimal(10, 2)
+  efectivo_contado  Decimal?          @db.Decimal(10, 2)
+  diferencia        Decimal?          @db.Decimal(10, 2)
+  notas             String?
+  abierto_at        DateTime          @default(now())
+  cerrado_at        DateTime?
+  movimientos       movimiento_caja[]
+  ventas            venta[]
+
+  @@index([caja_id])
+  @@index([usuario_id])
+}
+
+/// Entrada o Retiro de efectivo durante un turno.
+model movimiento_caja {
+  id         Int        @id @default(autoincrement())
+  turno_id   Int
+  turno      turno_caja @relation(fields: [turno_id], references: [id])
+  usuario_id Int
+  usuario    usuario    @relation(fields: [usuario_id], references: [id])
+  tipo       String
+  monto      Decimal    @db.Decimal(10, 2)
+  motivo     String
+  created_at DateTime   @default(now())
+
+  @@index([turno_id])
+  @@index([usuario_id])
+}
+
+/// Venta del punto de venta. El folio sale de la secuencia venta_folio_seq (V-00000001).
+/// cliente_id no tiene llave foránea porque aún no existe la tabla de clientes.
+/// turno_id es nullable por las ventas previas a los turnos; las nuevas siempre lo llevan.
+model venta {
+  id          Int             @id @default(autoincrement())
+  folio       String          @unique @default(dbgenerated("('V-'::text || lpad((nextval('venta_folio_seq'::regclass))::text, 8, '0'::text))"))
+  usuario_id  Int
+  usuario     usuario         @relation(fields: [usuario_id], references: [id])
+  turno_id    Int?
+  turno       turno_caja?     @relation(fields: [turno_id], references: [id])
+  cliente_id  Int?
+  metodo_pago String
+  total       Decimal         @db.Decimal(10, 2)
+  created_at  DateTime        @default(now())
+  detalles    detalle_venta[]
+
+  @@index([usuario_id])
+  @@index([turno_id])
+  @@index([cliente_id])
+}
+
+model detalle_venta {
+  id              Int      @id @default(autoincrement())
+  venta_id        Int
+  venta           venta    @relation(fields: [venta_id], references: [id])
+  producto_id     Int
+  producto        producto @relation(fields: [producto_id], references: [id])
+  cantidad        Int
+  precio_unitario Decimal  @db.Decimal(10, 2)
+  subtotal        Decimal  @db.Decimal(10, 2)
+
+  @@index([venta_id])
+  @@index([producto_id])
 }
 
 /// Entrada, Salida o Ajuste de inventario.
@@ -71,11 +187,11 @@ model movimiento {
 }
 
 model producto_impuesto {
-  id                  Int             @id @default(autoincrement())
-  producto_id         Int
-  producto            producto        @relation(fields: [producto_id], references: [id])
-  impuesto_preset_id  Int
-  impuesto_preset     impuesto_preset @relation(fields: [impuesto_preset_id], references: [id])
+  id                 Int             @id @default(autoincrement())
+  producto_id        Int
+  producto           producto        @relation(fields: [producto_id], references: [id])
+  impuesto_preset_id Int
+  impuesto_preset    impuesto_preset @relation(fields: [impuesto_preset_id], references: [id])
 
   @@index([producto_id])
   @@index([impuesto_preset_id])
@@ -115,16 +231,16 @@ model objeto_imp {
 /// Tasas y cuotas vigentes de c_TasaOCuota (catCFDI 4.0, archivo 2026-10-01).
 /// clave_impuesto sale de c_Impuesto: 001 ISR, 002 IVA, 003 IEPS.
 model impuesto_preset {
-  id                     Int                 @id @default(autoincrement())
-  clave_impuesto         String
-  impuesto               String
-  factor                 String
-  rango_o_fijo           String
-  valor_minimo           Decimal?            @db.Decimal(12, 6)
-  valor_maximo           Decimal             @db.Decimal(12, 6)
-  traslado               Boolean
-  retencion              Boolean
-  fecha_inicio_vigencia  DateTime            @db.Date
-  fecha_fin_vigencia     DateTime?           @db.Date
-  producto_impuestos     producto_impuesto[]
+  id                    Int                 @id @default(autoincrement())
+  clave_impuesto        String
+  impuesto              String
+  factor                String
+  rango_o_fijo          String
+  valor_minimo          Decimal?            @db.Decimal(12, 6)
+  valor_maximo          Decimal             @db.Decimal(12, 6)
+  traslado              Boolean
+  retencion             Boolean
+  fecha_inicio_vigencia DateTime            @db.Date
+  fecha_fin_vigencia    DateTime?           @db.Date
+  producto_impuestos    producto_impuesto[]
 }
